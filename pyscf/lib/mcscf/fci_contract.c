@@ -101,6 +101,39 @@ void FCIprog_a_t1(double *ci0, double *t1,
                 }
         }
 }
+
+void FCIprog_a_t1_nosym(double *ci0, double *t1,
+                  int bcount, int stra_id, int strb_id,
+                  int norb, int nstrb, int nlinka, _LinkT *clink_indexa)
+{
+        ci0 += strb_id;
+        int j, k, ia, sign;
+        int i, a;
+        size_t str1;
+        const _LinkT *tab = clink_indexa + stra_id * nlinka;
+        double *pt1, *pci;
+
+        for (j = 0; j < nlinka; j++) {
+                i    = EXTRACT_I   (tab[j]);
+                a    = EXTRACT_A   (tab[j]);
+                ia = a*norb + i;
+                str1 = EXTRACT_ADDR(tab[j]);
+                sign = EXTRACT_SIGN(tab[j]);
+                pt1 = t1 + ia*bcount;
+                pci = ci0 + str1*nstrb;
+                if (sign == 0) {
+                        break;
+                } else if (sign > 0) {
+                        for (k = 0; k < bcount; k++) {
+                                pt1[k] += pci[k];
+                        }
+                } else if (sign < 0) {
+                        for (k = 0; k < bcount; k++) {
+                                pt1[k] -= pci[k];
+                        }
+                }
+        }
+}
 /* 
  * For given stra_id, spread all beta-strings into t1[:nstrb,nnorb] 
  *    all str0-of-beta -> create/annihilate -> str1-of-beta
@@ -176,6 +209,31 @@ void FCIspread_b_t1(double *ci1, double *t1,
         for (str0 = 0; str0 < bcount; str0++) {
                 for (j = 0; j < nlinkb; j++) {
                         ia   = EXTRACT_IA  (tab[j]);
+                        str1 = EXTRACT_ADDR(tab[j]);
+                        sign = EXTRACT_SIGN(tab[j]);
+                        if (sign == 0) {
+                                break;
+                        }
+                        pci[str1] += sign * t1[ia*bcount+str0];
+                }
+                tab += nlinkb;
+        }
+}
+
+void FCIspread_b_t1_nosym(double *ci1, double *t1,
+                    int bcount, int stra_id, int strb_id,
+                    int norb, int nstrb, int nlinkb, _LinkT *clink_indexb)
+{
+        int j, ia, str0, str1, sign;
+	int i, a;
+        const _LinkT *tab = clink_indexb + strb_id * nlinkb;
+        double *pci = ci1 + stra_id * (size_t)nstrb;
+
+        for (str0 = 0; str0 < bcount; str0++) {
+                for (j = 0; j < nlinkb; j++) {
+                        i    = EXTRACT_I   (tab[j]);
+                        a    = EXTRACT_A   (tab[j]);
+                	ia = a*norb + i;
                         str1 = EXTRACT_ADDR(tab[j]);
                         sign = EXTRACT_SIGN(tab[j]);
                         if (sign == 0) {

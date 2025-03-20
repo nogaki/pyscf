@@ -111,6 +111,73 @@ def contract_2e(eri, civec_strs, norb, nelec, link_index=None):
 
     return _as_SCIvector(ci1.reshape(ci_coeff.shape), ci_strs)
 
+def contract_2e_nosym(eri, civec_strs, norb, nelec, link_index=None):
+    ci_coeff, nelec, ci_strs = _unpack(civec_strs, nelec)
+    if link_index is None:
+        link_index = _all_linkstr_index_nosym(ci_strs, norb, nelec)
+    cd_indexa, dd_indexa, cd_indexb, dd_indexb = link_index
+    na, nlinka = cd_indexa.shape[:2]
+    nb, nlinkb = cd_indexb.shape[:2]
+
+    assert eri.ndim == 4
+    eri1 = eri.transpose(0,2,1,3) - eri.transpose(0,2,3,1)
+    idx,idy = numpy.tril_indices(norb, -1)
+    idx = idx * norb + idy
+    eri1 = lib.take_2d(eri1.reshape(norb**2,-1), idx, idx) * 2
+    fcivec = ci_coeff.reshape(na,nb)
+    # (bb|bb)
+    if nelec[1] > 1:
+        mb, mlinkb = dd_indexb.shape[:2]
+        fcivecT = lib.transpose(fcivec)
+        ci1T = numpy.zeros((nb,na))
+        libfci.SCIcontract_2e_aaaa(eri1.ctypes.data_as(ctypes.c_void_p),
+                                   fcivecT.ctypes.data_as(ctypes.c_void_p),
+                                   ci1T.ctypes.data_as(ctypes.c_void_p),
+                                   ctypes.c_int(norb),
+                                   ctypes.c_int(nb), ctypes.c_int(na),
+                                   ctypes.c_int(mb), ctypes.c_int(mlinkb),
+                                   dd_indexb.ctypes.data_as(ctypes.c_void_p))
+        ci1 = lib.transpose(ci1T, out=fcivecT)
+    else:
+        ci1 = numpy.zeros_like(fcivec)
+    # (aa|aa)
+    if nelec[0] > 1:
+        ma, mlinka = dd_indexa.shape[:2]
+        libfci.SCIcontract_2e_aaaa(eri1.ctypes.data_as(ctypes.c_void_p),
+                                   fcivec.ctypes.data_as(ctypes.c_void_p),
+                                   ci1.ctypes.data_as(ctypes.c_void_p),
+                                   ctypes.c_int(norb),
+                                   ctypes.c_int(na), ctypes.c_int(nb),
+                                   ctypes.c_int(ma), ctypes.c_int(mlinka),
+                                   dd_indexa.ctypes.data_as(ctypes.c_void_p))
+
+    # Adding h_ps below to because contract_2e function computes the
+    # contraction  "E_{pq}E_{rs} V_{pqrs} |CI>" (~ p^+ q r^+ s |CI>) while
+    # the actual contraction for (aa|aa) and (bb|bb) part is
+    # "p^+ r^+ s q V_{pqrs} |CI>". To make (aa|aa) and (bb|bb) code reproduce
+    # "p^+ q r^+ s |CI>", we employ the identity
+    #    p^+ q r^+ s = p^+ r^+ s q  +  delta(qr) p^+ s
+    # the second term is the source of h_ps
+    h_ps = numpy.einsum('pqqs->ps', eri)
+    eri1 = eri * 2
+    for k in range(norb):
+        eri1[:,:,k,k] += h_ps/nelec[0]
+        eri1[k,k,:,:] += h_ps/nelec[1]
+#    eri1 = ao2mo.restore(4, eri1, norb)
+    # (bb|aa)
+    libfci.SCIcontract_2e_bbaa_nosym(eri1.ctypes.data_as(ctypes.c_void_p),
+                               fcivec.ctypes.data_as(ctypes.c_void_p),
+                               ci1.ctypes.data_as(ctypes.c_void_p),
+                               ctypes.c_int(norb),
+                               ctypes.c_int(na), ctypes.c_int(nb),
+                               ctypes.c_int(nlinka), ctypes.c_int(nlinkb),
+                               cd_indexa.ctypes.data_as(ctypes.c_void_p),
+                               cd_indexb.ctypes.data_as(ctypes.c_void_p))
+
+    return _as_SCIvector(ci1.reshape(ci_coeff.shape), ci_strs)
+
+
+
 def select_strs(myci, eri, eri_pq_max, civec_max, strs, norb, nelec):
     strs = numpy.asarray(strs, dtype=numpy.int64)
     nstrs = len(strs)
@@ -357,6 +424,57 @@ def kernel_fixed_space(myci, h1e, eri, norb, nelec, ci_strs, ci0=None,
         return e+ecore, [_as_SCIvector(ci.reshape(na,nb),ci_strs) for ci in c]
     else:
         return e+ecore, _as_SCIvector(c.reshape(na,nb), ci_strs)
+
+from pyscf.fci import direct_nosym
+def kernel_fixed_space_nosym(myci, h1e, eri, norb, nelec, ci_strs, ci0=None,
+                       tol=None, lindep=None, max_cycle=None, max_space=None,
+                       nroots=None, davidson_only=None,
+                       max_memory=None, verbose=None, ecore=0, **kwargs):
+    log = logger.new_logger(myci, verbose)
+    if tol is None: tol = myci.conv_tol
+    if lindep is None: lindep = myci.lindep
+    if max_cycle is None: max_cycle = myci.max_cycle
+    if max_space is None: max_space = myci.max_space
+    if max_memory is None: max_memory = myci.max_memory
+    if nroots is None: nroots = myci.nroots
+    if myci.verbose >= logger.WARN:
+        myci.check_sanity()
+
+    nelec = direct_spin1._unpack_nelec(nelec, myci.spin)
+    ci0, nelec, ci_strs = _unpack(ci0, nelec, ci_strs)
+    na = len(ci_strs[0])
+    nb = len(ci_strs[1])
+    h2e = direct_nosym.absorb_h1e(h1e, eri, norb, nelec, .5)
+    assert h2e.ndim == 4
+
+    link_index = _all_linkstr_index_nosym(ci_strs, norb, nelec)
+    hdiag = myci.make_hdiag(h1e, eri, ci_strs, norb, nelec, compress=True)
+
+    if isinstance(ci0, SCIvector):
+        if ci0.size == na*nb:
+            ci0 = [ci0.ravel()]
+        else:
+            ci0 = [x.ravel() for x in ci0]
+    else:
+        ci0 = myci.get_init_guess(ci_strs, norb, nelec, nroots, hdiag)
+
+    cpu0 = [logger.process_clock(), logger.perf_counter()]
+    def hop(c):
+        hc = myci.contract_2e_nosym(h2e, _as_SCIvector(c, ci_strs), norb, nelec, link_index)
+        cpu0[:] = log.timer_debug1('contract_2e', *cpu0)
+        return hc.reshape(-1)
+    precond = lambda x, e, *args: x/(hdiag-e+1e-4)
+
+    #e, c = lib.davidson(hop, ci0, precond, tol=myci.conv_tol)
+    e, c = myci.eig(hop, ci0, precond, tol=tol, lindep=lindep,
+                    max_cycle=max_cycle, max_space=max_space, nroots=nroots,
+                    max_memory=max_memory, verbose=log, **kwargs)
+    if nroots > 1:
+        return e+ecore, [_as_SCIvector(ci.reshape(na,nb),ci_strs) for ci in c]
+    else:
+        return e+ecore, _as_SCIvector(c.reshape(na,nb), ci_strs)
+
+
 
 
 def kernel_float_space(myci, h1e, eri, norb, nelec, ci0=None,
@@ -761,6 +879,18 @@ class SelectedCI(direct_spin1.FCISolver):
             civec_strs = _as_SCIvector(civec_strs, self._strs)
         return contract_2e(eri, civec_strs, norb, nelec, link_index)
 
+    def contract_2e_nosym(self, eri, civec_strs, norb, nelec, link_index=None, **kwargs):
+        # The argument civec_strs is a CI vector in function FCISolver.contract_2e.
+        # Save and patch self._strs to make this contract_2e function compatible to
+        # FCISolver.contract_2e.
+        if getattr(civec_strs, '_strs', None) is not None:
+            self._strs = civec_strs._strs
+        else:
+            assert (civec_strs.size == len(self._strs[0])*len(self._strs[1]))
+            civec_strs = _as_SCIvector(civec_strs, self._strs)
+        return contract_2e_nosym(eri, civec_strs, norb, nelec, link_index)
+
+
     def get_init_guess(self, ci_strs, norb, nelec, nroots, hdiag):
         '''Initial guess is the single Slater determinant
         '''
@@ -902,6 +1032,13 @@ def _all_linkstr_index(ci_strs, norb, nelec):
     dd_indexb = des_des_linkstr_tril(ci_strs[1], norb, nelec[1])
     return cd_indexa, dd_indexa, cd_indexb, dd_indexb
 
+def _all_linkstr_index_nosym(ci_strs, norb, nelec):
+    cd_indexa = cre_des_linkstr(     ci_strs[0], norb, nelec[0], tril=False)
+    dd_indexa = des_des_linkstr_tril(ci_strs[0], norb, nelec[0])
+    cd_indexb = cre_des_linkstr(     ci_strs[1], norb, nelec[1], tril=False)
+    dd_indexb = des_des_linkstr_tril(ci_strs[1], norb, nelec[1])
+    return cd_indexa, dd_indexa, cd_indexb, dd_indexb
+
 # numpy.ndarray does not allow to attach attributes.  Overwrite the
 # numpy.ndarray class to tag the ._strs attribute
 class SCIvector(numpy.ndarray):
@@ -960,27 +1097,30 @@ if __name__ == '__main__':
     eri = eri.reshape(norb,norb,norb,norb)
 
     e1, c1 = kernel(h1e, eri, norb, nelec)
-    e2, c2 = direct_spin1.kernel(h1e, eri, norb, nelec)
-    print(e1, e1 - -11.894559902235565, 'diff to FCI', e1-e2)
+#    e2, c2 = direct_spin1.kernel(h1e, eri, norb, nelec)
+#    print(e1, e1 - -11.894559902235565, 'diff to FCI', e1-e2)
 
-    print(c1.shape, c2.shape)
-    dm1_1 = make_rdm1(c1, norb, nelec)
-    dm1_2 = direct_spin1.make_rdm1(c2, norb, nelec)
-    print(abs(dm1_1 - dm1_2).sum())
-    dm2_1 = make_rdm2(c1, norb, nelec)
-    dm2_2 = direct_spin1.make_rdm12(c2, norb, nelec)[1]
-    print(abs(dm2_1 - dm2_2).sum())
-
-    myci = SelectedCI()
-    e, c = kernel_fixed_space(myci, h1e, eri, norb, nelec, c1._strs)
-    print(e - -11.894559902235565)
-
-    print(myci.large_ci(c1, norb, nelec))
-    print(myci.spin_square(c1, norb, nelec)[0] -
-          spin_op.spin_square0(to_fci(c1, norb, nelec), norb, nelec)[0])
+#    print(c1.shape, c2.shape)
+#    dm1_1 = make_rdm1(c1, norb, nelec)
+#    dm1_2 = direct_spin1.make_rdm1(c2, norb, nelec)
+#    print(abs(dm1_1 - dm1_2).sum())
+#    dm2_1 = make_rdm2(c1, norb, nelec)
+#    dm2_2 = direct_spin1.make_rdm12(c2, norb, nelec)[1]
+#    print(abs(dm2_1 - dm2_2).sum())
 
     myci = SelectedCI()
-    myci = addons.fix_spin_(myci)
-    e1, c1 = myci.kernel(h1e, eri, norb, nelec)
-    print(e1, e1 - -11.89467612053687)
-    print(myci.spin_square(c1, norb, nelec))
+#    e, c = kernel_fixed_space(myci, h1e, eri, norb, nelec, c1._strs)
+#    print(e - -11.894559902235565)
+
+    e, c = kernel_fixed_space_nosym(myci, h1e, eri, norb, nelec, c1._strs) #Added
+    print(e - -11.894559902235565, "nogaki") #Added
+
+#    print(myci.large_ci(c1, norb, nelec))
+#    print(myci.spin_square(c1, norb, nelec)[0] -
+#          spin_op.spin_square0(to_fci(c1, norb, nelec), norb, nelec)[0])
+
+#    myci = SelectedCI()
+#    myci = addons.fix_spin_(myci)
+#    e1, c1 = myci.kernel(h1e, eri, norb, nelec)
+#    print(e1, e1 - -11.89467612053687)
+#    print(myci.spin_square(c1, norb, nelec))

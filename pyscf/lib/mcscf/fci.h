@@ -55,6 +55,9 @@ int FCIpopcount_1(uint64_t x);
 void FCIprog_a_t1(double *ci0, double *t1,
                   int bcount, int stra_id, int strb_id,
                   int norb, int nstrb, int nlinka, _LinkTrilT *clink_indexa);
+void FCIprog_a_t1_nosym(double *ci0, double *t1,
+                  int bcount, int stra_id, int strb_id,
+                  int norb, int nstrb, int nlinka, _LinkT *clink_indexa);
 void FCIprog_b_t1(double *ci0, double *t1,
                   int bcount, int stra_id, int strb_id,
                   int norb, int nstrb, int nlinka, _LinkTrilT *clink_indexa);
@@ -64,6 +67,9 @@ void FCIspread_a_t1(double *ci0, double *t1,
 void FCIspread_b_t1(double *ci0, double *t1,
                     int bcount, int stra_id, int strb_id,
                     int norb, int nstrb, int nlinka, _LinkTrilT *clink_indexa);
+void FCIspread_b_t1_nosym(double *ci0, double *t1,
+                    int bcount, int stra_id, int strb_id,
+                    int norb, int nstrb, int nlinka, _LinkT *clink_indexa);
 
 double FCIrdm2_a_t1ci(double *ci0, double *t1,
                       int bcount, int stra_id, int strb_id,

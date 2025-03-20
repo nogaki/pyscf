@@ -375,6 +375,59 @@ void SCIcontract_2e_bbaa(double *eri, double *ci0, double *ci1,
         free(clinkb);
 }
 
+static void ctr_bbaa_kern_nosym(double *eri, double *ci0, double *ci1,
+                          double *ci1buf, double *t1buf,
+                          int bcount, int stra_id, int strb_id,
+                          int norb, int na, int nb, int nlinka, int nlinkb,
+                          _LinkT *clink_indexa, _LinkT *clink_indexb)
+{
+        const char TRANS_N = 'N';
+        const double D0 = 0;
+        const double D1 = 1;
+        const int nnorb = norb * norb;
+        double *t1  = t1buf;
+        double *vt1 = t1buf + nnorb*bcount;
+
+        NPdset0(t1, nnorb*bcount);
+        FCIprog_a_t1_nosym(ci0, t1, bcount, stra_id, strb_id,
+                     norb, nb, nlinka, clink_indexa);
+        dgemm_(&TRANS_N, &TRANS_N, &bcount, &nnorb, &nnorb,
+               &D1, t1, &bcount, eri, &nnorb, &D0, vt1, &bcount);
+        FCIspread_b_t1_nosym(ci1, vt1, bcount, stra_id, strb_id,
+                       norb, nb, nlinkb, clink_indexb);
+}
+
+void SCIcontract_2e_bbaa_nosym(double *eri, double *ci0, double *ci1,
+                         int norb, int na, int nb, int nlinka, int nlinkb,
+                         int *link_indexa, int *link_indexb)
+{
+        _LinkT *clinka = malloc(sizeof(_LinkT) * nlinka * na);
+        _LinkT *clinkb = malloc(sizeof(_LinkT) * nlinkb * nb);
+        FCIcompress_link(clinka, link_indexa, norb, na, nlinka);
+        FCIcompress_link(clinkb, link_indexb, norb, nb, nlinkb);
+
+#pragma omp parallel
+{
+        int strk, ib, blen;
+        double *t1buf = malloc(sizeof(double) * (STRB_BLKSIZE*norb*norb+2));
+        double *ci1buf = NULL;
+        for (ib = 0; ib < nb; ib += STRB_BLKSIZE) {
+                blen = MIN(STRB_BLKSIZE, nb-ib);
+#pragma omp for schedule(static)
+                for (strk = 0; strk < na; strk++) {
+                        ctr_bbaa_kern_nosym(eri, ci0, ci1, ci1buf, t1buf,
+                                      blen, strk, ib, norb, na, nb,
+                                      nlinka, nlinkb, clinka, clinkb);
+                }
+        }
+        free(t1buf);
+}
+        free(clinka);
+        free(clinkb);
+}
+
+
+
 static void ctr_aaaa_kern(double *eri, double *ci0, double *ci1,
                           double *ci1buf, double *t1buf,
                           int bcount, int stra_id, int strb_id,
