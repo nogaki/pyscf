@@ -409,7 +409,7 @@ void SCIcontract_2e_bbaa_nosym(double *eri, double *ci0, double *ci1,
 #pragma omp parallel
 {
         int strk, ib, blen;
-        double *t1buf = malloc(sizeof(double) * (STRB_BLKSIZE*norb*norb+2));
+        double *t1buf = malloc(sizeof(double) * (STRB_BLKSIZE*2*norb*norb+2));
         double *ci1buf = NULL;
         for (ib = 0; ib < nb; ib += STRB_BLKSIZE) {
                 blen = MIN(STRB_BLKSIZE, nb-ib);

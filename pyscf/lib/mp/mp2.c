@@ -114,7 +114,8 @@ void MP2_contract_d(double *ed_out, double *ex_out, const int s2symm,
     }
 
 #pragma omp parallel default(none) \
-        shared(njob, jobs, batch_iaL, batch_jbL, parr_iaL, parr_jbL, moeoo, moevv, naux, i0, j0, nocc, nvir, nvv, noccj, D0, D1, I1, TRANS_N, TRANS_Y, ed_out, ex_out, parr_t2, t2_ex)
+        firstprivate(njob, jobs, batch_iaL, batch_jbL, parr_iaL, parr_jbL, moeoo, moevv, naux, i0, j0, nocc, nvir, nvv, noccj, D0, D1, I1, TRANS_N, TRANS_Y, ed_out, ex_out, parr_t2, t2_ex)
+        //shared(njob, jobs, batch_iaL, batch_jbL, parr_iaL, parr_jbL, moeoo, moevv, naux, i0, j0, nocc, nvir, nvv, noccj, D0, D1, I1, TRANS_N, TRANS_Y, ed_out, ex_out, parr_t2, t2_ex)
 {
     double *cache = malloc(sizeof(double) * nvv*3);
     double *vab = cache;
@@ -221,7 +222,8 @@ void MP2_OS_contract_d(double *ed_out,
     }
 
 #pragma omp parallel default(none) \
-        shared(njob, jobs, batch_iaL, batch_jbL, parr_iaL, parr_jbL, moeoo, moevv, naux, i0, j0, nocca, noccb, nvira, nvirb, nvv, noccj, D0, D1, I1, TRANS_N, TRANS_Y, ed_out, parr_t2)
+        firstprivate(njob, jobs, batch_iaL, batch_jbL, parr_iaL, parr_jbL, moeoo, moevv, naux, i0, j0, nocca, noccb, nvira, nvirb, nvv, noccj, D0, D1, I1, TRANS_N, TRANS_Y, ed_out, parr_t2)
+        //shared(njob, jobs, batch_iaL, batch_jbL, parr_iaL, parr_jbL, moeoo, moevv, naux, i0, j0, nocca, noccb, nvira, nvirb, nvv, noccj, D0, D1, I1, TRANS_N, TRANS_Y, ed_out, parr_t2)
 {
     double *cache = malloc(sizeof(double) * nvv*2);
     double *vab = cache;
@@ -318,7 +320,8 @@ void MP2_contract_c(double *ed_out, double *ex_out, const int s2symm,
     const double **parr_jbLI = _gen_ptr_arr(batch_jbLI, noccj, nvx);
 
 #pragma omp parallel default(none) \
-        shared(njob, jobs, batch_iaLR, batch_iaLI, batch_jbLR, batch_jbLI, parr_iaLR, parr_iaLI, parr_jbLR, parr_jbLI, moeoo, moevv, naux, nvir, nvv, noccj, D0, D1, Dm1, I1, TRANS_N, TRANS_Y, ed_out, ex_out)
+        firstprivate(njob, jobs, batch_iaLR, batch_iaLI, batch_jbLR, batch_jbLI, parr_iaLR, parr_iaLI, parr_jbLR, parr_jbLI, moeoo, moevv, naux, nvir, nvv, noccj, D0, D1, Dm1, I1, TRANS_N, TRANS_Y, ed_out, ex_out)
+        //shared(njob, jobs, batch_iaLR, batch_iaLI, batch_jbLR, batch_jbLI, parr_iaLR, parr_iaLI, parr_jbLR, parr_jbLI, moeoo, moevv, naux, nvir, nvv, noccj, D0, D1, Dm1, I1, TRANS_N, TRANS_Y, ed_out, ex_out)
 {
     double *cache = malloc(sizeof(double) * nvv*6);
     double *vabR = cache;
@@ -424,7 +427,8 @@ void MP2_OS_contract_c(double *ed_out,
     const double **parr_jbLI = _gen_ptr_arr(batch_jbLI, noccj, nvbx);
 
 #pragma omp parallel default(none) \
-        shared(njob, jobs, batch_iaLR, batch_iaLI, batch_jbLR, batch_jbLI, parr_iaLR, parr_iaLI, parr_jbLR, parr_jbLI, moeoo, moevv, naux, nvira, nvirb, nvv, noccj, D0, D1, Dm1, I1, TRANS_N, TRANS_Y, ed_out)
+        firstprivate(njob, jobs, batch_iaLR, batch_iaLI, batch_jbLR, batch_jbLI, parr_iaLR, parr_iaLI, parr_jbLR, parr_jbLI, moeoo, moevv, naux, nvira, nvirb, nvv, noccj, D0, D1, Dm1, I1, TRANS_N, TRANS_Y, ed_out)
+        //shared(njob, jobs, batch_iaLR, batch_iaLI, batch_jbLR, batch_jbLI, parr_iaLR, parr_iaLI, parr_jbLR, parr_jbLI, moeoo, moevv, naux, nvira, nvirb, nvv, noccj, D0, D1, Dm1, I1, TRANS_N, TRANS_Y, ed_out)
 {
     double *cache = malloc(sizeof(double) * nvv*4);
     double *vabR = cache;
@@ -493,7 +497,9 @@ void trisolve_parallel_grp(double *low, double *b, const int n, const int nrhs, 
     int mgrp = floor((double) (nrhs + ngrp - 1) / ngrp);
     ngrp = (int) floor( (double) (nrhs + mgrp - 1) / mgrp);
     const double **parr_b = _gen_ptr_arr(b, nrhs, n);
-#pragma omp parallel default(none) shared(low, b, n, nrhs, ngrp, mgrp, parr_b)
+#pragma omp parallel default(none) \
+    firstprivate(low, b, n, nrhs, ngrp, mgrp, parr_b)
+    //shared(low, b, n, nrhs, ngrp, mgrp, parr_b)
 {
     const char SIDE = 'L';
     const char UPLO = 'L';

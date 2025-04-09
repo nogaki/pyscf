@@ -559,6 +559,35 @@ class SpinPenaltyFCISolver:
         ci1 += ci0.reshape(fcivec.shape)
         return ci1
 
+    def contract_2e_nosym(self, eri, fcivec, norb, nelec, link_index=None, **kwargs):
+        if isinstance(nelec, (int, numpy.number)):
+            sz = (nelec % 2) * .5
+        else:
+            sz = abs(nelec[0]-nelec[1]) * .5
+        if self.ss_value is None:
+            ss = sz*(sz+1)
+        else:
+            ss = self.ss_value
+
+        if ss < sz*(sz+1)+.1:
+            # (S^2-ss)|Psi> to shift state other than the lowest state
+            ci1 = self.contract_ss(fcivec, norb, nelec).reshape(fcivec.shape)
+            ci1 -= ss * fcivec
+        else:
+            # (S^2-ss)^2|Psi> to shift states except the given spin.
+            # It still relies on the quality of initial guess
+            tmp = self.contract_ss(fcivec, norb, nelec).reshape(fcivec.shape)
+            tmp -= ss * fcivec
+            ci1 = -ss * tmp
+            ci1 += self.contract_ss(tmp, norb, nelec).reshape(fcivec.shape)
+            tmp = None
+        ci1 *= self.ss_penalty
+
+        ci0 = super().contract_2e_nosym (eri, fcivec, norb, nelec, link_index, **kwargs)
+        ci1 += ci0.reshape(fcivec.shape)
+        return ci1
+
+
 def fix_spin(fciobj, shift=PENALTY, ss=None, **kwargs):
     r'''If FCI solver cannot stay on spin eigenfunction, this function can
     add a shift to the states which have wrong spin.

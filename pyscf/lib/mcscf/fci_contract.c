@@ -116,7 +116,8 @@ void FCIprog_a_t1_nosym(double *ci0, double *t1,
         for (j = 0; j < nlinka; j++) {
                 i    = EXTRACT_I   (tab[j]);
                 a    = EXTRACT_A   (tab[j]);
-                ia = a*norb + i;
+                //ia = a*norb + i;
+                ia = i*norb + a;
                 str1 = EXTRACT_ADDR(tab[j]);
                 sign = EXTRACT_SIGN(tab[j]);
                 pt1 = t1 + ia*bcount;
